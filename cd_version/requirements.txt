@@ -1,0 +1,3 @@
+matplotlib>=3.5
+numpy>=1.21
+scipy>=1.7        # optional — required only for Hungarian allocation
