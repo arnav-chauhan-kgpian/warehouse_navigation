@@ -72,6 +72,39 @@ python main.py
 
 ---
 
+## Running the Simulation & Viewing Outputs
+
+### How to Run
+Once dependencies (`matplotlib numpy scipy`) are installed, simply execute the entry point script using Python:
+
+```bash
+python main.py
+```
+
+The script natively outputs a 6-step progression logic to your terminal showcasing standard terminal logs (warehouse generation, static/dynamic tasks processing, and simulation steps). 
+
+### How to View Visual Outputs
+Upon the simulation successfully concluding, **a series of 3 visual graphical windows will pop up sequentially** (make sure your OS allows Python to spawn windowed GUI applications). 
+
+*Note: You must **close the current window** for the script to spawn the next graph in the visual pipeline!*
+
+1. **Live Warehouse Animation**
+   A "Cyberpunk" themed animated grid rendering the entire simulated process step-by-step.
+   - **Neon Glowing Paths**: Each robot flashes a dedicated neon color, laying down trails and dashes indicating its reserved path via Space-Time A*.
+   - **Task Updates**: Green diamonds (Pick-ups) and Red squares (Drop-offs) will dim as tasks are actively collected and cleared.
+   - **Live Metrics Board**: Look to the right panel to see real-time Distance Traveled and Tasks Completed graphs extending dynamically.
+2. **Global Performance Metrics**
+   Once you exit the animation, a static window will plot out the Final End-of-Run simulation metrics including:
+   - Distance Traveled (per-robot Bar Chart)
+   - Total Tasks Completed (per-robot Bar Chart) 
+   - Task Makespan Frequency (Histogram with analytical Means)
+3. **Movement Final-State Heatmap**
+   Closing out the Metrics window spawns an overhead 2D grid plot tracing out:
+   - Each robot's entire movement flow history.
+   - White pop-up tags noting the total Makespan cost right above drop-off cells representing performance. 
+
+---
+
 ## Configuration
 
 All parameters live in the `CONFIG` dict at the top of `main.py`:
@@ -171,25 +204,58 @@ The simulation accounts for:
   Multi-Robot Warehouse Navigation & Task Allocation
 ══════════════════════════════════════════════════════════════
 
-┌─  1 / 6  —  Building warehouse
-    Warehouse 22×24  |  Free: 336  |  Shelves: 192  |  Occupancy: 36.4%
+┌─  1 / 5  —  Building warehouse
+    Warehouse 22×24  |  Free: 408  |  Shelves: 120  |  Occupancy: 22.7%
 
-┌─  2 / 6  —  Spawning 4 robots
-    Robot  0  spawned at  row=16, col=22
-    Robot  1  spawned at  row=17, col= 3
+┌─  2 / 5  —  Spawning 4 robots
+    Robot  0  spawned at  row=21, col=14
+    Robot  1  spawned at  row=16, col=13
+    Robot  2  spawned at  row=17, col= 1
+    Robot  3  spawned at  row=16, col= 0
 
+┌─  3 / 5  —  Generating 8 static tasks
+    Task  0  (9, 3) → (0, 14)
+    Task  1  (13, 16) → (14, 22)
+    Task  2  (17, 14) → (13, 10)
+    Task  3  (14, 5) → (20, 15)
+...
+┌─  4 / 5  —  Scheduling 4 dynamic tasks
+    Task  8  (9, 11) → (0, 16)  (appears at step 40)
+...
 ┌─  5 / 6  —  Running simulation  [greedy allocation]
-  Step    0  |  Done  0/12  |  Active robots 4/4
-  Step   25  |  Done  3/12  |  Active robots 4/4
-  Step   50  |  Done  7/12  |  Active robots 3/4
-  ✓ All tasks completed at step 134!
-  Finished 566 steps early
 
+  Robots: 4  |  Static tasks: 8  |  Dynamic tasks: 4  |  Method: greedy
+────────────────────────────────────────────────────────────
+  [Step    0]  → Robot 0 assigned Task 2  (17, 14) → (13, 10)
+  [Step    0]  → Robot 1 assigned Task 1  (13, 16) → (14, 22)
+...
+  Step    0  |  Done  0/8  |  Active robots 4/4
+  [Step    5]  📦 Robot 0 picked up Task 2 → heading to (13, 10)
+  [Step   12]  ✓ Robot 1 completed Task 1  (makespan 12 steps)
+...
+  Step   50  |  Done  7/9  |  Active robots 2/4
+  [Step   61]  ✓ Robot 3 completed Task 8  (makespan 21 steps)
+
+  ✓ All tasks completed at step 61!
+  Finished 639 steps early
+
+  Wall-clock time: 0.03s
 ╔══════════════════════════════════════╗
-║  Completed Tasks      : 12           ║
-║  Avg Task Makespan    :  38.2 steps  ║
-║  Throughput           :   8.96 tasks/100s ║
+║      SIMULATION PERFORMANCE REPORT   ║
+╠══════════════════════════════════════╣
+║  Total Tasks          : 9            ║
+║  Completed Tasks      : 9            ║
+║  Success Rate         : 100.0        ║
+║  Total Steps          : 61           ║
+║  Total Distance       : 192          ║
+║  Avg Task Makespan    : 29.2         ║
+║  Throughput           : 14.75        ║
 ╚══════════════════════════════════════╝
+
+┌─  6 / 6  —  Visualisation
+  Launching animation …  (close the window to continue)
+  Showing metric charts …
+  Showing final warehouse map …
 ```
 
 ---

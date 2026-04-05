@@ -66,8 +66,8 @@ class ConflictBasedSearch:
             cost=self._compute_sum_of_costs(root_paths),
         )
         open_heap: List[CBSNode] = [root]
-        best_cost = float("inf")
-        best_partial: Optional[Dict[int, List]] = None
+        root_cost = root.cost
+        best_partial: Optional[Dict[int, List]] = root.paths
 
         while open_heap:
             N = heapq.heappop(open_heap)
@@ -75,10 +75,10 @@ class ConflictBasedSearch:
 
             # Node limit — prune heap and return best partial
             if self.nodes_expanded > self.config.cbs_max_nodes:
-                return best_partial if best_partial else N.paths
+                return best_partial
 
-            # Heap pruning: discard nodes with cost > 1.5× best found
-            if N.cost > 1.5 * best_cost and best_cost != float("inf"):
+            # Heap pruning: discard nodes with cost > 1.5× unconstrained cost
+            if N.cost > 1.5 * root_cost and root_cost > 0:
                 continue
 
             conflict = self._find_first_conflict(N.paths)
@@ -86,9 +86,8 @@ class ConflictBasedSearch:
                 # Solution found
                 return N.paths
 
-            if N.cost < best_cost:
-                best_cost = N.cost
-                best_partial = N.paths
+            # Keep track of the deepest explored node's paths as best_partial
+            best_partial = N.paths
 
             # ── Branch on conflict: constrain each involved agent ─────────────
             for agent in conflict["agents"]:

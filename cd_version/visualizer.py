@@ -31,27 +31,27 @@ from simulation import Simulation
 from warehouse import Warehouse
 
 # ---------------------------------------------------------------------------
-# Colour palette
+# Colour palette (Cyberpunk / Presentation Theme)
 # ---------------------------------------------------------------------------
 
 ROBOT_PALETTE = [
-    "#E74C3C",   # vivid red
-    "#3498DB",   # steel blue
-    "#2ECC71",   # emerald green
-    "#F39C12",   # amber
-    "#9B59B6",   # amethyst
-    "#1ABC9C",   # teal
-    "#E67E22",   # carrot orange
-    "#2980B9",   # belize blue
-    "#D35400",   # pumpkin
-    "#27AE60",   # nephritis
+    "#FF0055",   # neon pink
+    "#00F0FF",   # neon cyan
+    "#00FF41",   # neon green
+    "#FFB800",   # neon yellow-orange
+    "#B000FF",   # neon purple
+    "#FF5E00",   # fiery orange
+    "#0088FF",   # bright sky blue
+    "#7BFF00",   # voltage yellow
+    "#00FF9D",   # bright mint
+    "#FF00D4",   # hyper magenta
 ]
 
-_SHELF_RGBA  = [0.18, 0.20, 0.25, 1.0]   # dark blue-grey shelves
-_FLOOR_RGBA  = [0.95, 0.95, 0.92, 1.0]   # warm off-white floor
-_BG_DARK     = "#0f0f23"
-_PANEL_DARK  = "#1a1a3e"
-_PANEL_MED   = "#16213e"
+_SHELF_RGBA  = [0.10, 0.14, 0.22, 1.0]   # futuristic dark slate shelves
+_FLOOR_RGBA  = [0.04, 0.05, 0.06, 1.0]   # ultra-dark obsidian floor
+_BG_DARK     = "#08090D" # deep charcoal-black background
+_PANEL_DARK  = "#0E1118"
+_PANEL_MED   = "#141822"
 
 
 # ---------------------------------------------------------------------------
@@ -161,15 +161,15 @@ class WarehouseVisualizer:
         for task in self.tasks:
             pp = ax_main.plot(
                 task.pickup[1],  task.pickup[0],
-                marker="D", markersize=7, color="#2ECC71",
-                markeredgecolor="#1a6b3a", markeredgewidth=0.8,
-                zorder=4, alpha=0.9, linestyle="None",
+                marker="D", markersize=8, color="#00FF41",
+                markeredgecolor="white", markeredgewidth=0.8,
+                zorder=4, alpha=0.95, linestyle="None",
             )[0]
             dp = ax_main.plot(
                 task.dropoff[1], task.dropoff[0],
-                marker="s", markersize=7, color="#E74C3C",
-                markeredgecolor="#8b1a1a", markeredgewidth=0.8,
-                zorder=4, alpha=0.9, linestyle="None",
+                marker="s", markersize=8, color="#FF0055",
+                markeredgecolor="white", markeredgewidth=0.8,
+                zorder=4, alpha=0.95, linestyle="None",
             )[0]
             pickup_pts[task.id]  = pp
             dropoff_pts[task.id] = dp
@@ -197,12 +197,12 @@ class WarehouseVisualizer:
             )
             robot_labels.append(lbl)
 
-            tl, = ax_main.plot([], [], color=clr, alpha=0.28,
-                               linewidth=2.0, zorder=3, solid_capstyle="round")
+            tl, = ax_main.plot([], [], color=clr, alpha=0.6,
+                               linewidth=2.5, zorder=3, solid_capstyle="round")
             trail_lines.append(tl)
 
-            pl, = ax_main.plot([], [], color=clr, alpha=0.55,
-                               linewidth=1.2, linestyle="--", zorder=5)
+            pl, = ax_main.plot([], [], color=clr, alpha=0.85,
+                               linewidth=1.5, linestyle="--", zorder=5)
             path_lines.append(pl)
 
         # ── Metric bar charts ────────────────────────────────────────────
@@ -234,9 +234,9 @@ class WarehouseVisualizer:
 
         # ── Legend ───────────────────────────────────────────────────────
         legend_elems = [
-            mpatches.Patch(facecolor="#2ECC71", edgecolor="#1a6b3a",
+            mpatches.Patch(facecolor="#00FF41", edgecolor="white",
                            label="Pickup  ◆"),
-            mpatches.Patch(facecolor="#E74C3C", edgecolor="#8b1a1a",
+            mpatches.Patch(facecolor="#FF0055", edgecolor="white",
                            label="Drop-off ■"),
         ] + [
             mpatches.Patch(facecolor=self._color(r.id), label=f"Robot {r.id}")
@@ -378,8 +378,8 @@ class WarehouseVisualizer:
         mk = metrics.makespan_list
         if mk:
             nbins = max(5, len(mk) // 2)
-            ax.hist(mk, bins=nbins, color="#3498DB", alpha=0.85, edgecolor=_BG_DARK)
-            ax.axvline(metrics.avg_makespan, color="#F39C12", linewidth=1.5,
+            ax.hist(mk, bins=nbins, color="#0088FF", alpha=0.85, edgecolor=_BG_DARK)
+            ax.axvline(metrics.avg_makespan, color="#FFB800", linewidth=2.0,
                        linestyle="--", label=f"Mean {metrics.avg_makespan:.1f}")
             ax.legend(facecolor=_PANEL_DARK, labelcolor="white",
                       edgecolor="#555", fontsize=9)
@@ -451,9 +451,14 @@ class WarehouseVisualizer:
             done  = task.status == TaskStatus.COMPLETED
             alpha = 0.22 if done else 0.88
             ax.plot(task.pickup[1],  task.pickup[0],  "D",
-                    color="#2ECC71", markersize=9, alpha=alpha, zorder=5)
+                    color="#00FF41", markersize=9, alpha=alpha, markeredgecolor="white", markeredgewidth=0.8, zorder=5)
             ax.plot(task.dropoff[1], task.dropoff[0], "s",
-                    color="#E74C3C", markersize=9, alpha=alpha, zorder=5)
+                    color="#FF0055", markersize=9, alpha=alpha, markeredgecolor="white", markeredgewidth=0.8, zorder=5)
+            
+            if done:
+                ax.text(task.dropoff[1], task.dropoff[0]-0.25, str(task.makespan),
+                        color="white", fontsize=6, fontweight="bold", ha="center", va="top",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="#FF0055", alpha=0.9, edgecolor="none"), zorder=8)
 
         ax.set_xlim(-0.5, self.wh.cols - 0.5)
         ax.set_ylim(self.wh.rows - 0.5, -0.5)
