@@ -8,16 +8,16 @@ class Config:
     """Central configuration dataclass for the multi-robot warehouse system."""
 
     # ── Environment ───────────────────────────────────────────────────────────
-    grid_height: int = 16
-    grid_width: int = 20
-    num_robots: int = 8
-    num_tasks: int = 20
+    grid_height: int = 8
+    grid_width: int = 10
+    num_robots: int = 4
+    num_tasks: int = 8
     shelf_density: float = 0.30       # Fraction of cells that are shelves/obstacles
     max_timesteps: int = 500          # Max steps per episode before timeout
 
     # ── A* / CBS ──────────────────────────────────────────────────────────────
     time_horizon: int = 100           # Max time dimension for space-time A*
-    cbs_max_nodes: int = 5000         # CBS high-level tree node expansion limit
+    cbs_max_nodes: int = 50           # CBS high-level tree node expansion limit
 
     # ── Kinodynamic weighting ─────────────────────────────────────────────────
     mu_traction: float = 0.6          # Traction coefficient
@@ -32,7 +32,7 @@ class Config:
     gnn_learning_rate: float = 1e-3
     gnn_batch_size: int = 64
     gnn_epochs: int = 50
-    gnn_train_episodes: int = 10000   # CBS solutions to generate as training labels
+    gnn_train_episodes: int = 5       # CBS solutions to generate as training labels
     gnn_top_k: int = 3                # Top-k assignment candidates GNN proposes to CBS
 
     # ── Logging ───────────────────────────────────────────────────────────────

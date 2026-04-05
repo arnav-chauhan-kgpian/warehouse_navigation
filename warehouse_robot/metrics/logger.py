@@ -76,7 +76,7 @@ class MetricsLogger:
 
         df = pd.DataFrame(self._records)
         df.to_csv(self._csv_path, index=False)
-        print(f"[Logger] Metrics saved → {self._csv_path}")
+        print(f"[Logger] Metrics saved -> {self._csv_path}")
         return df
 
     def close(self) -> None:

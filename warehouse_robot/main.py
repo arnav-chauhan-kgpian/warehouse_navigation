@@ -454,12 +454,12 @@ def main() -> None:
     print(f"  [Validation] Mean makespan={agg1.get('makespan',0):.1f}, "
           f"collisions={agg1.get('collisions',0):.1f}")
     if agg1.get("collisions", 1) == 0:
-        print("  ✓ Zero collisions confirmed for CBS+Hungarian baseline.")
+        print("  Success: Zero collisions confirmed for CBS+Hungarian baseline.")
 
     # ══════════════════════════════════════════════════════════════════════════
     print("\n=== PHASE 2: Ablation Baselines ===")
     # ══════════════════════════════════════════════════════════════════════════
-    N_ABLATION = 20  # Reduced from 100 for reasonable local runtime
+    N_ABLATION = 2  # Reduced for fast local testing
     ablation_results: Dict[str, Dict] = {}
 
     print("  Running: Greedy A* + Nearest Robot ...")
@@ -551,7 +551,7 @@ def main() -> None:
         agg_base = ablation_results["CBS + Hungarian"]
         speedup = agg_base.get("cbs_nodes_expanded", 1) / max(agg_gnn.get("cbs_nodes_expanded", 1), 1)
         print(f"  GNN makespan={agg_gnn['makespan']:.1f}, "
-              f"CBS nodes={agg_gnn['cbs_nodes_expanded']:.1f}, speedup={speedup:.2f}×")
+              f"CBS nodes={agg_gnn['cbs_nodes_expanded']:.1f}, speedup={speedup:.2f}x")
     else:
         print("  [Warning] GNN not available — skipping GNN eval.")
         ablation_results["CBS + Hungarian + GNN"] = {"makespan": "N/A", "sum_of_costs": "N/A",
@@ -582,28 +582,28 @@ def main() -> None:
     # ══════════════════════════════════════════════════════════════════════════
     print("\n=== PHASE 6: Final Report ===")
     # ══════════════════════════════════════════════════════════════════════════
-    print("\n" + "─" * 75)
+    print("\n" + "-" * 75)
     print(f"{'Method':<30} {'Makespan':>10} {'SoC':>10} {'Coll.':>8} {'AllocMs':>10}")
-    print("─" * 75)
+    print("-" * 75)
     for method, agg in ablation_results.items():
         mk = f"{agg.get('makespan', '–'):.1f}" if isinstance(agg.get("makespan"), float) else str(agg.get("makespan", "–"))
         sc = f"{agg.get('sum_of_costs', '–'):.1f}" if isinstance(agg.get("sum_of_costs"), float) else str(agg.get("sum_of_costs", "–"))
         co = f"{agg.get('collisions', '–'):.1f}" if isinstance(agg.get("collisions"), float) else str(agg.get("collisions", "–"))
         al = f"{agg.get('allocation_time_ms', '–'):.1f}" if isinstance(agg.get("allocation_time_ms"), float) else str(agg.get("allocation_time_ms", "–"))
         print(f"{method:<30} {mk:>10} {sc:>10} {co:>8} {al:>10}")
-    print("─" * 75)
+    print("-" * 75)
 
     if "CBS + Hungarian + GNN" in ablation_results and "CBS + Hungarian" in ablation_results:
         base_nodes = ablation_results["CBS + Hungarian"].get("cbs_nodes_expanded", 1)
         gnn_nodes = ablation_results["CBS + Hungarian + GNN"].get("cbs_nodes_expanded", 1)
         try:
             ratio = float(base_nodes) / max(float(gnn_nodes), 1)
-            print(f"\nGNN Speedup Ratio (CBS nodes): {ratio:.2f}×")
+            print(f"\nGNN Speedup Ratio (CBS nodes): {ratio:.2f}x")
         except (TypeError, ValueError):
             pass
 
     logger.close()
-    print("\n✓ Pipeline complete. Output files: warehouse_sim.gif, training_curves.png, "
+    print("\nSuccess: Pipeline complete. Output files: warehouse_sim.gif, training_curves.png, "
           "ablation_results.png, metrics_log.csv")
 
 

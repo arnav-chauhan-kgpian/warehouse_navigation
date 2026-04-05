@@ -227,7 +227,7 @@ class WarehouseRenderer:
             loop=0,
             duration=duration_ms,
         )
-        print(f"[Renderer] Saved animation ({len(frames)} frames) → {output_path}")
+        print(f"[Renderer] Saved animation ({len(frames)} frames) -> {output_path}")
 
     def plot_training_curves(
         self,
@@ -276,7 +276,7 @@ class WarehouseRenderer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
-        print(f"[Renderer] Training curves saved → {output_path}")
+        print(f"[Renderer] Training curves saved -> {output_path}")
 
     def plot_ablation_table(
         self,
@@ -349,4 +349,4 @@ class WarehouseRenderer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
-        print(f"[Renderer] Ablation table saved → {output_path}")
+        print(f"[Renderer] Ablation table saved -> {output_path}")
