@@ -225,21 +225,34 @@ class GNNAllocator:
         pending_indices = [j for j, s in enumerate(task_status) if s == 0]
 
         proposals: List[Dict[int, int]] = []
-        for _ in range(top_k):
-            S = scores_np.copy()
+        # Keep a copy of original scores to start fresh for each proposal
+        original_scores = scores_np.copy()
+        used_robot_task_pairs: set = set()
+
+        for proposal_idx in range(top_k):
+            S = original_scores.copy()
+            # For diversity: mask previously chosen (robot, local_task) pairs
+            for ri, ti in used_robot_task_pairs:
+                if ri < S.shape[0] and ti < S.shape[1]:
+                    S[ri, ti] = -np.inf
+
             assignment: Dict[int, int] = {}
-            k, m = S.shape
-            for _ in range(min(k, m)):
-                flat_idx = np.argmax(S)
-                ri, ti = divmod(int(flat_idx), m)
-                if S[ri, ti] == -np.inf:
+            k_dim, m_dim = S.shape
+            S_active = S.copy()
+            this_pairs = []
+            for _ in range(min(k_dim, m_dim)):
+                flat_idx = int(np.argmax(S_active))
+                ri, ti = divmod(flat_idx, m_dim)
+                if S_active[ri, ti] == -np.inf:
                     break
                 original_task_id = pending_indices[ti] if ti < len(pending_indices) else ti
                 assignment[ri] = original_task_id
-                S[ri, :] = -np.inf
-                S[:, ti] = -np.inf
+                this_pairs.append((ri, ti))
+                S_active[ri, :] = -np.inf
+                S_active[:, ti] = -np.inf
+
             proposals.append(assignment)
-            # Perturb scores slightly for diversity in subsequent proposals
-            scores_np = scores_np + np.random.randn(*scores_np.shape) * 0.1
+            # Record used pairs to diversify next proposal
+            used_robot_task_pairs.update(this_pairs)
 
         return proposals

@@ -15,11 +15,18 @@ class SpaceTimeAStar:
     """Space-Time A* planner with kinodynamic corner penalties and constraint support."""
 
     def __init__(self, grid: np.ndarray, config: Config) -> None:
-        """Store grid and config. Precompute corner cells for kinodynamic weighting."""
+        """Store grid and config. Precompute corner cells and kinodynamic penalty."""
         self.grid = grid
         self.config = config
         self.H, self.W = grid.shape
         self.corner_cells: Set[Tuple[int, int]] = precompute_corner_cells(grid)
+
+        # Compute kinodynamic corner penalty from physics parameters
+        # v_max_turn = sqrt(mu * g * r);  lambda = (v_straight - v_turn) / v_straight
+        v_max_turn = (config.mu_traction * config.g_gravity * config.turning_radius) ** 0.5
+        computed_lambda = (config.v_max_straight - v_max_turn) / config.v_max_straight
+        # Use the larger of the computed and configured values for safety
+        self._corner_penalty = max(computed_lambda, config.corner_penalty_lambda)
 
     def plan(
         self,
@@ -58,14 +65,12 @@ class SpaceTimeAStar:
                 continue
 
             for nr, nc, nt in self._get_neighbors(r, c, t):
-                # Vertex constraint check
+                # Vertex constraint check: forbidden to be at (nr, nc) at time nt
                 if (nr, nc, nt) in constraint_set:
                     continue
-                # Edge conflict (swap) check
-                if (nc, nr, nt) in constraint_set and (nr == r and nc == c):
-                    continue
-                # Detect swap: robot at (nr,nc) moving to (r,c) at same time
-                if (r, c, nt) in constraint_set and (nr, nc, t) in constraint_set:
+                # Edge (swap) conflict check: another robot is moving from (nr,nc) to (r,c)
+                # at the same time step, i.e., it holds (nr,nc,t) and (r,c,t+1=nt)
+                if (nr, nc, t) in constraint_set and (r, c, nt) in constraint_set:
                     continue
 
                 cell_cost = self._get_cell_cost(nr, nc)
@@ -85,9 +90,9 @@ class SpaceTimeAStar:
         return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
 
     def _get_cell_cost(self, row: int, col: int) -> float:
-        """Return 1.0 + corner_penalty_lambda if cell is a corner cell, else 1.0."""
+        """Return 1.0 + _corner_penalty if cell is a corner cell, else 1.0."""
         if (row, col) in self.corner_cells:
-            return 1.0 + self.config.corner_penalty_lambda
+            return 1.0 + self._corner_penalty
         return 1.0
 
     def _get_neighbors(

@@ -88,7 +88,7 @@ def greedy_allocate(
             if robot.id in used_robots:
                 continue
             d = _manhattan(robot.pos, task.pickup)
-            if d < best_dist:
+            if d < best_dist or (d == best_dist and robot.id < best_robot.id):
                 best_dist  = d
                 best_robot = robot
 

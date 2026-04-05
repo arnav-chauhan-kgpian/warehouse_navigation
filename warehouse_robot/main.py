@@ -56,89 +56,202 @@ def run_episode_cbs_hungarian(
     """
     Run one episode using CBS + Hungarian (optionally GNN warm-start).
 
+    Multi-phase: after robots reach pickups, CBS replans to dropoffs.
+    If gnn_allocator is provided, its top-1 proposal seeds the initial assignment
+    (with Hungarian as fallback).
     Returns (metrics_dict, frames_list).
     """
     obs, _ = env.reset(seed=None)
-    assignment = hungarian.reassign_dynamic(
-        env.robot_positions, env.task_list, env.task_status, env.robot_tasks
-    )
-    # Apply assignment to env
+
+    # ── Initial task assignment ───────────────────────────────────────────────
+    if gnn_allocator is not None:
+        try:
+            obs_data = env.get_observation()
+            proposals = gnn_allocator.propose_assignments(
+                robot_positions=np.array(env.robot_positions),
+                tasks=env.task_list,
+                task_status=obs_data["task_status"],
+                top_k=config.gnn_top_k,
+                grid_height=config.grid_height,
+                grid_width=config.grid_width,
+            )
+            assignment = proposals[0] if proposals else {}
+        except Exception:
+            assignment = {}
+        # Fall back to Hungarian if GNN produced an empty or incomplete assignment
+        if not assignment:
+            assignment = hungarian.reassign_dynamic(
+                env.robot_positions, env.task_list, env.task_status, env.robot_tasks
+            )
+    else:
+        assignment = hungarian.reassign_dynamic(
+            env.robot_positions, env.task_list, env.task_status, env.robot_tasks
+        )
+
     for robot_id, task_id in assignment.items():
-        env.robot_tasks[robot_id] = task_id
-        env.task_status[task_id] = "in_progress_pickup"
-
-    # Plan CBS paths for each robot to its assigned goal
-    starts = {i: env.robot_positions[i] for i in range(config.num_robots)}
-    goals: Dict[int, Tuple[int, int]] = {}
-    for robot_id in range(config.num_robots):
-        task_idx = env.robot_tasks[robot_id]
-        if task_idx is not None:
-            pickup, dropoff = env.task_list[task_idx]
-            goals[robot_id] = pickup  # First goal: pickup
-        else:
-            goals[robot_id] = env.robot_positions[robot_id]  # Stay in place
-
-    t0 = time.time()
-    cbs.nodes_expanded = 0
-    paths = cbs.plan(starts, goals)
-    alloc_time_ms = (time.time() - t0) * 1000
-
-    if paths is None:
-        paths = {i: [(env.robot_positions[i][0], env.robot_positions[i][1], 0)]
-                 for i in range(config.num_robots)}
+        if task_id < len(env.task_list):
+            env.robot_tasks[robot_id] = task_id
+            env.task_status[task_id] = "in_progress_pickup"
 
     frames: List[np.ndarray] = []
     total_collisions = 0
-    sum_of_costs = sum(len(p) for p in paths.values())
+    sum_of_costs = 0
+    global_step = 0
+    cbs.nodes_expanded = 0
+    alloc_time_ms = 0.0
 
-    # Step through planned paths
-    max_path_len = max(len(p) for p in paths.values()) if paths else 0
-    for step in range(max_path_len):
-        actions: Dict[int, Tuple[int, int]] = {}
-        for robot_id, path in paths.items():
-            if step < len(path):
-                r, c, _ = path[step]
-                actions[robot_id] = (r, c)
-            else:
-                actions[robot_id] = env.robot_positions[robot_id]
-
-        obs, rewards, terminated, truncated, info = env.step(actions)
-        total_collisions += info["collisions"]
-
-        if capture_frames and renderer is not None:
-            try:
-                frame = renderer.render_frame_simple(
-                    grid=env.grid,
-                    robot_positions=env.robot_positions,
-                    paths=paths,
-                    tasks=env.task_list,
-                    task_status=env.task_status,
-                    robot_carrying=env.robot_carrying,
-                    timestep=step,
-                    metrics={
-                        "tasks_completed": info["tasks_completed"],
-                        "collisions": total_collisions,
-                        "cbs_nodes_expanded": cbs.nodes_expanded,
-                        "sum_of_costs": sum_of_costs,
-                        "makespan": step,
-                    },
-                )
-                frames.append(frame)
-            except Exception as e:
-                pass  # Rendering errors are non-fatal
-
-        if terminated or truncated:
+    # ── Multi-phase planning loop ─────────────────────────────────────────────
+    # Repeat until all tasks done, timeout, or no progress possible
+    max_phases = config.num_tasks * 2 + 4  # Upper bound on planning phases
+    for _phase in range(max_phases):
+        if env._tasks_completed >= config.num_tasks:
+            break
+        if global_step >= config.max_timesteps:
             break
 
+        # Build goals: each robot targets its current sub-goal
+        starts: Dict[int, Tuple[int, int]] = {
+            i: env.robot_positions[i] for i in range(config.num_robots)
+        }
+        goals: Dict[int, Tuple[int, int]] = {}
+        for robot_id in range(config.num_robots):
+            task_idx = env.robot_tasks[robot_id]
+            if task_idx is not None:
+                pickup, dropoff = env.task_list[task_idx]
+                status = env.task_status[task_idx]
+                if status == "in_progress_pickup":
+                    goals[robot_id] = pickup
+                elif status == "in_progress_dropoff":
+                    goals[robot_id] = dropoff
+                else:
+                    goals[robot_id] = env.robot_positions[robot_id]
+            else:
+                goals[robot_id] = env.robot_positions[robot_id]
+
+        # Skip phase if no robot has a meaningful goal
+        if all(goals[i] == env.robot_positions[i] for i in range(config.num_robots)):
+            # Reassign idle robots to remaining pending tasks
+            t0 = time.time()
+            new_assign = hungarian.reassign_dynamic(
+                env.robot_positions, env.task_list, env.task_status, env.robot_tasks
+            )
+            alloc_time_ms += (time.time() - t0) * 1000
+            if not new_assign:
+                break  # No more work to do
+            for robot_id, task_id in new_assign.items():
+                env.robot_tasks[robot_id] = task_id
+                env.task_status[task_id] = "in_progress_pickup"
+            continue
+
+        # Plan collision-free paths with CBS
+        t0 = time.time()
+        paths = cbs.plan(starts, goals)
+        alloc_time_ms += (time.time() - t0) * 1000
+
+        if paths is None:
+            paths = {
+                i: [(env.robot_positions[i][0], env.robot_positions[i][1], 0)]
+                for i in range(config.num_robots)
+            }
+
+        sum_of_costs += sum(len(p) for p in paths.values())
+        max_path_len = max(len(p) for p in paths.values()) if paths else 1
+
+        # Execute this phase's paths
+        for step in range(max_path_len):
+            if global_step >= config.max_timesteps:
+                break
+            global_step += 1
+
+            actions: Dict[int, Tuple[int, int]] = {}
+            for robot_id, path in paths.items():
+                if step < len(path):
+                    r, c, _ = path[step]
+                    actions[robot_id] = (r, c)
+                else:
+                    actions[robot_id] = env.robot_positions[robot_id]
+
+            obs, rewards, terminated, truncated, info = env.step(actions)
+            total_collisions += info["collisions"]
+
+            if capture_frames and renderer is not None:
+                try:
+                    frame = renderer.render_frame_simple(
+                        grid=env.grid,
+                        robot_positions=env.robot_positions,
+                        paths=paths,
+                        tasks=env.task_list,
+                        task_status=env.task_status,
+                        robot_carrying=env.robot_carrying,
+                        timestep=global_step,
+                        metrics={
+                            "tasks_completed": info["tasks_completed"],
+                            "collisions": total_collisions,
+                            "cbs_nodes_expanded": cbs.nodes_expanded,
+                            "sum_of_costs": sum_of_costs,
+                            "makespan": global_step,
+                        },
+                    )
+                    frames.append(frame)
+                except Exception:
+                    pass
+
+            if terminated or truncated:
+                break
+
+        # After executing paths: update goals for robots that just reached pickup
+        for robot_id in range(config.num_robots):
+            task_idx = env.robot_tasks[robot_id]
+            if task_idx is not None:
+                _, dropoff = env.task_list[task_idx]
+                status = env.task_status[task_idx]
+                # If robot is now carrying, it reached pickup — next goal is dropoff
+                if env.robot_carrying[robot_id] and status == "in_progress_dropoff":
+                    pass  # Already set by env.step(); will be handled in next phase
+                # If task is done, free the robot for reassignment
+                elif status == "done":
+                    env.robot_tasks[robot_id] = None
+
+        # Reassign idle robots to remaining pending tasks (Hungarian or GNN)
+        t0 = time.time()
+        if gnn_allocator is not None:
+            try:
+                obs_data = env.get_observation()
+                proposals = gnn_allocator.propose_assignments(
+                    robot_positions=np.array(env.robot_positions),
+                    tasks=env.task_list,
+                    task_status=obs_data["task_status"],
+                    top_k=1,
+                    grid_height=config.grid_height,
+                    grid_width=config.grid_width,
+                )
+                new_assign = proposals[0] if proposals else {}
+            except Exception:
+                new_assign = {}
+            if not new_assign:
+                new_assign = hungarian.reassign_dynamic(
+                    env.robot_positions, env.task_list, env.task_status, env.robot_tasks
+                )
+        else:
+            new_assign = hungarian.reassign_dynamic(
+                env.robot_positions, env.task_list, env.task_status, env.robot_tasks
+            )
+        alloc_time_ms += (time.time() - t0) * 1000
+
+        for robot_id, task_id in new_assign.items():
+            if env.robot_tasks[robot_id] is None:  # Only assign truly idle robots
+                env.robot_tasks[robot_id] = task_id
+                env.task_status[task_id] = "in_progress_pickup"
+
     metrics = {
-        "makespan": info.get("makespan", max_path_len),
+        "makespan": global_step,
         "sum_of_costs": sum_of_costs,
         "collisions": total_collisions,
-        "tasks_completed": info.get("tasks_completed", 0),
+        "tasks_completed": env._tasks_completed,
         "cbs_nodes_expanded": cbs.nodes_expanded,
         "allocation_time_ms": alloc_time_ms,
-        "total_distance_cells": info.get("total_distance", 0),
-        "episode_timeout": truncated,
+        "total_distance_cells": env._total_distance,
+        "episode_timeout": global_step >= config.max_timesteps,
     }
     return metrics, frames
 

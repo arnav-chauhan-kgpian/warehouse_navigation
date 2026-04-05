@@ -127,40 +127,55 @@ def spawn_robots(
     return robots
 
 
+_MAX_RETRY = 50
+
 def generate_tasks(
     count:      int,
     wh:         Warehouse,
     occupied:   List[Tuple[int, int]],
     seed:       int,
-    id_offset:  int = 0,
+    id_offset:  int,
     created_at: int = 0,
 ) -> List[Task]:
     """
     Generate *count* pick-and-place tasks on randomly chosen free cells.
     Pickup and dropoff are guaranteed to be distinct and unoccupied.
     """
-    rng   = random.Random(seed + 200)
-    used  = set(occupied)
-    tasks = []
+    saved_rng = wh._rng
+    wh._rng = random.Random(seed + 200)
+    try:
+        used  = set(occupied)
+        tasks = []
 
-    for i in range(count):
-        # Retry a few times in case of RNG collision
-        for _ in range(50):
-            pu = wh.random_free_cell(exclude=list(used))
-            do = wh.random_free_cell(exclude=list(used) + [pu])
-            break
-        used.add(pu); used.add(do)
+        for i in range(count):
+            # Retry a few times in case of RNG collision
+            for _ in range(_MAX_RETRY):
+                try:
+                    pu = wh.random_free_cell(exclude=list(used))
+                    do = wh.random_free_cell(exclude=list(used) + [pu])
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise RuntimeError(
+                    f"Could not place task {id_offset + i} after {_MAX_RETRY} attempts "
+                    f"— too many cells already occupied. Reduce num_robots or num_tasks."
+                )
+            used.add(pu); used.add(do)
 
-        tasks.append(Task(
-            id           = id_offset + i,
-            pickup       = pu,
-            dropoff      = do,
-            created_time = created_at,
-        ))
-        print(
-            f"    Task {id_offset+i:2d}  {pu} → {do}"
-            + (f"  (appears at step {created_at})" if created_at else "")
-        )
+            tasks.append(Task(
+                id           = id_offset + i,
+                pickup       = pu,
+                dropoff      = do,
+                created_time = created_at,
+            ))
+            print(
+                f"    Task {id_offset+i:2d}  {pu} → {do}"
+                + (f"  (appears at step {created_at})" if created_at else "")
+            )
+
+    finally:
+        wh._rng = saved_rng
 
     return tasks
 
@@ -183,11 +198,16 @@ def schedule_dynamic_tasks(
 
     for i in range(count):
         arrival = first_step + i * interval
-        task    = generate_tasks(
-            1, wh, list(used), seed + i * 13,
-            id_offset=id_offset + i,
-            created_at=arrival,
-        )[0]
+        saved_rng = wh._rng
+        wh._rng = random.Random(seed + i * 13)
+        try:
+            task    = generate_tasks(
+                1, wh, list(used), seed + i * 13,
+                id_offset=id_offset + i,
+                created_at=arrival,
+            )[0]
+        finally:
+            wh._rng = saved_rng
         used.add(task.pickup)
         used.add(task.dropoff)
         events.append((arrival, task))
@@ -199,8 +219,23 @@ def schedule_dynamic_tasks(
 # MAIN
 # ===========================================================================
 
+def _validate_config(cfg: dict) -> None:
+    if cfg["num_robots"] < 1:
+        raise ValueError("num_robots must be >= 1")
+    if cfg["num_static_tasks"] < 0 or cfg["num_dynamic_tasks"] < 0:
+        raise ValueError("num_static_tasks and num_dynamic_tasks must be >= 0")
+    if cfg["max_steps"] < 10:
+        raise ValueError("max_steps must be >= 10")
+    if cfg["replan_horizon"] > cfg["max_steps"]:
+        raise ValueError("replan_horizon must be <= max_steps")
+    if cfg["allocation_method"] not in {"greedy", "hungarian"}:
+        raise ValueError("allocation_method must be 'greedy' or 'hungarian'")
+    if not isinstance(cfg["seed"], int):
+        raise ValueError("seed must be an integer")
+
 def main() -> None:
     cfg  = CONFIG
+    _validate_config(cfg)
     seed = cfg["seed"]
 
     _banner("Multi-Robot Warehouse Navigation & Task Allocation")
@@ -236,7 +271,7 @@ def main() -> None:
     )
 
     # ── 5. Simulation ──────────────────────────────────────────────────────
-    _section(f"5 / 5  —  Running simulation  [{cfg['allocation_method']} allocation]")
+    _section(f"5 / 6  —  Running simulation  [{cfg['allocation_method']} allocation]")
     sim = Simulation(
         warehouse         = wh,
         robots            = robots,
@@ -250,7 +285,7 @@ def main() -> None:
     sim.run()
 
     # ── Visualisation ──────────────────────────────────────────────────────
-    _section("Visualisation")
+    _section("6 / 6  —  Visualisation")
     viz = WarehouseVisualizer(
         warehouse          = wh,
         robots             = robots,

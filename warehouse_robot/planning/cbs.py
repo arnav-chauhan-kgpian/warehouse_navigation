@@ -100,10 +100,20 @@ class ConflictBasedSearch:
                         (conflict["cell"][0], conflict["cell"][1], conflict["time"])
                     )
                 elif conflict["type"] == "edge":
-                    # Prevent agent from entering the conflict cell at conflict time
+                    # For a swap A→B and B→A: constrain agent from entering
+                    # the conflict cell at conflict_time AND from leaving its
+                    # current position at conflict_time-1 (occupancy constraint).
+                    # Practically: add vertex constraint at destination + source.
                     N_prime_constraints[agent].append(
                         (conflict["cell"][0], conflict["cell"][1], conflict["time"])
                     )
+                    # Also constrain the agent at conflict_time - 1 at the OTHER
+                    # agent's destination (the swap source), blocking the crossing.
+                    t_prev = max(0, conflict["time"] - 1)
+                    path_agent = N.paths.get(agent, [])
+                    if len(path_agent) > t_prev:
+                        src_r, src_c, _ = path_agent[t_prev]
+                        N_prime_constraints[agent].append((src_r, src_c, conflict["time"]))
 
                 # Replan only the constrained agent
                 new_path = self.astar.plan(

@@ -72,11 +72,11 @@ class SimMetrics:
             "╠══════════════════════════════════════╣",
             f"║  Total Tasks          : {self.total_tasks:<13}║",
             f"║  Completed Tasks      : {self.completed_tasks:<13}║",
-            f"║  Success Rate         : {self.completed_tasks/max(1,self.total_tasks)*100:>6.1f} %      ║",
+            f"║  Success Rate         : {self.completed_tasks/max(1,self.total_tasks)*100:<13.1f}║",
             f"║  Total Steps          : {self.simulation_steps:<13}║",
             f"║  Total Distance       : {self.total_distance:<13}║",
-            f"║  Avg Task Makespan    : {self.avg_makespan:>6.1f} steps    ║",
-            f"║  Throughput           : {self.throughput:>6.2f} tasks/100s ║",
+            f"║  Avg Task Makespan    : {self.avg_makespan:<13.1f}║",
+            f"║  Throughput           : {self.throughput:<13.2f}║",
             "╚══════════════════════════════════════╝",
         ]
         return "\n".join(lines)
@@ -85,6 +85,8 @@ class SimMetrics:
 # ---------------------------------------------------------------------------
 # Simulation
 # ---------------------------------------------------------------------------
+
+_PRUNE_INTERVAL: int = 25
 
 class Simulation:
     """
@@ -165,6 +167,9 @@ class Simulation:
             self._check_completions()
             self._save_snapshot()
 
+            if step % _PRUNE_INTERVAL == 0:
+                self._prune_old_reservations()
+
             if self.verbose and step % 25 == 0:
                 done = sum(1 for t in self.tasks if t.status == TaskStatus.COMPLETED)
                 active = sum(1 for r in self.robots if not r.is_idle)
@@ -177,6 +182,7 @@ class Simulation:
             if self._all_done():
                 if self.verbose:
                     print(f"\n  ✓ All tasks completed at step {step}!")
+                    print(f"  Finished {self.max_steps - step} steps early")
                 break
 
         # Finalise metrics
@@ -223,6 +229,8 @@ class Simulation:
                 for dt in range(self.goal_pad + 10):
                     key = (r, c, self.step + dt)
                     existing = self.reservation.get(key)
+                    if existing is not None and existing != robot.id:
+                        continue
                     if existing is None or existing == robot.id:
                         self.reservation[key] = robot.id
 
@@ -232,6 +240,11 @@ class Simulation:
             pairs = hungarian_allocate(self.robots, self.tasks, self.step)
         else:
             pairs = greedy_allocate(self.robots, self.tasks, self.step)
+
+        # Sort pairs by manhattan(robot.pos, task.pickup) ascending
+        def manhattan(p1, p2):
+            return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+        pairs.sort(key=lambda pair: manhattan(pair[0].pos, pair[1].pickup))
 
         for robot, task in pairs:
             self._assign(robot, task)
@@ -273,8 +286,13 @@ class Simulation:
                     if self.verbose:
                         print(
                             f"  [WARNING] Robot {robot.id}: no path to dropoff "
-                            f"{task.dropoff}"
+                            f"{task.dropoff} — task {task.id} re-queued to PENDING."
                         )
+                    task.status        = TaskStatus.PENDING
+                    task.assigned_to   = None
+                    robot.current_task = None
+                    robot.status       = RobotStatus.IDLE
+                    robot.reset_path()
 
             # ── Arrived at dropoff ─────────────────────────────────────────
             elif (
@@ -392,6 +410,16 @@ class Simulation:
                 if key not in self.reservation:
                     self.reservation[key] = robot_id
 
+    def _prune_old_reservations(self) -> None:
+        """
+        Remove reservation entries whose timestep has already passed.
+        Keeps the dict bounded to at most ~(replan_horizon * n_robots) entries.
+        Called every _PRUNE_INTERVAL steps from run().
+        """
+        stale = [k for k in self.reservation if k[2] < self.step]
+        for k in stale:
+            del self.reservation[k]
+
     def _clear_reservations(self, robot_id: int) -> None:
         """Remove all reservation-table entries belonging to *robot_id*."""
         keys = [k for k, v in self.reservation.items() if v == robot_id]
@@ -414,9 +442,9 @@ class Simulation:
             "step":            self.step,
             "robot_positions": {r.id: r.pos          for r in self.robots},
             "robot_statuses":  {r.id: r.status        for r in self.robots},
-            "robot_paths":     {r.id: list(r.path)    for r in self.robots},
+            "robot_paths":     {r.id: list(r.path) if r.path else [] for r in self.robots},
             "robot_path_idx":  {r.id: r.path_index    for r in self.robots},
-            "robot_trails":    {r.id: list(r.trail)   for r in self.robots},
+            "robot_trails":    {r.id: list(r.trail[-200:]) for r in self.robots},
             "robot_distances": {r.id: r.total_distance for r in self.robots},
             "robot_task_counts":{r.id: r.tasks_completed for r in self.robots},
             "task_statuses":   {t.id: t.status        for t in self.tasks},

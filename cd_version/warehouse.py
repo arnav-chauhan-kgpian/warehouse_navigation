@@ -58,6 +58,7 @@ class Warehouse:
 
         self.grid:       List[List[int]]       = self._build_grid()
         self.free_cells: List[Tuple[int, int]] = self._collect_free_cells()
+        self.free_cells_set: frozenset = frozenset(self.free_cells)
 
     # ------------------------------------------------------------------
     # Grid construction
