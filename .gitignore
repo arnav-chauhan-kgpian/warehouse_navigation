@@ -11,7 +11,7 @@ __pycache__/
 __MACOSX/
 
 # Project specific
-output/
+# output/
 AIFA_Project/output/
 
 # Distribution / packaging
